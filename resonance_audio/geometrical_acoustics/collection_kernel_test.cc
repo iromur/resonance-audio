@@ -278,6 +278,7 @@ TEST_F(CollectionKernelTest, CollectRaysInMonteCarloIntegrationTest) {
   const float monte_carlo_weight = 1.0f / static_cast<float>(total_num_rays);
   for (AcousticRay& ray : rays) {
     SphereIntersection(listener_sphere, &ray);
+    
     if (ray.intersected_geometry_id() == listener_sphere.geometry_id) {
       collection_kernel.Collect(ray, monte_carlo_weight, &listener);
     }

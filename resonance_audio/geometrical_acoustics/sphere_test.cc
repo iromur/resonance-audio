@@ -32,24 +32,18 @@ namespace {
 // passed to rtcSetBoundsFunction().
 // The signature of RTCBoundsFunc does not comply with Google's C++ style,
 
-static void EmbreeSphereBoundsFunction(void* user_data, size_t index,
-                                       RTCBounds& output_bounds
-                                       ) {
-  Sphere* spheres = static_cast<Sphere*>(user_data);
-  const Sphere& sphere = spheres[index];
-  SphereBounds(sphere, &output_bounds);
+static void EmbreeSphereBoundsFunction(const struct RTCBoundsFunctionArguments* args) {
+  const Sphere& sphere = *static_cast<Sphere*>(args->geometryUserPtr);
+  SphereBounds(sphere, args->bounds_o);
 }
 
 // A function adapter from SphereIntersections() to RTCIntersectFunc in order
 // to be passed to rtcSetIntersectFunction().
 // The signature of RTCIntersectFunc does not comply with Google's C++ style,
 
-static void EmbreeSphereIntersectFunction(void* user_data,
-                                          RTCRay& ray,
-                                          size_t index) {
-  Sphere* spheres = static_cast<Sphere*>(user_data);
-  const Sphere& sphere = spheres[index];
-  SphereIntersection(sphere, &ray);
+static void EmbreeSphereIntersectFunction(const struct RTCIntersectFunctionNArguments* args) {
+  const Sphere& sphere = *static_cast<Sphere*>(args->geometryUserPtr);
+  SphereIntersection(sphere, args->rayhit, args->N);
 }
 
 void SetSphereData(const float center[3], float radius,
@@ -188,16 +182,20 @@ class SphereTest : public testing::Test {
  protected:
   void SetUp() override {
     // Use a single RTCDevice for all tests.
-    static RTCDevice device = rtcNewDevice(nullptr);
-    CHECK_NOTNULL(device);
-    scene_ = rtcDeviceNewScene(
-        device, RTC_SCENE_STATIC | RTC_SCENE_HIGH_QUALITY, RTC_INTERSECT1);
+    device_ = rtcNewDevice(nullptr);
+    CHECK_NOTNULL(device_);
+    scene_ = rtcNewScene(device_);
+    rtcSetSceneBuildQuality(scene_, RTC_BUILD_QUALITY_HIGH);
   }
 
-  void TearDown() override { rtcDeleteScene(scene_); }
+  void TearDown() override {
+    rtcReleaseScene(scene_);
+    rtcReleaseDevice(device_);
+  }
 
   unsigned int AddSphereToScene() {
-    const unsigned int geometry_id = rtcNewUserGeometry(scene_, 1);
+    RTCGeometry geometry = rtcNewGeometry(device_, RTC_GEOMETRY_TYPE_USER);
+    const unsigned int geometry_id = rtcAttachGeometry(scene_, geometry);
 
     const float center[3] = {0.0f, 0.0f, 0.0f};
     const float radius = 1.0f;
@@ -208,21 +206,24 @@ class SphereTest : public testing::Test {
     SetSphereData(center, radius, geometry_id, sphere);
 
     // rtcSetUserData() takes ownership of |sphere|.
-    rtcSetUserData(scene_, geometry_id, sphere);
-    rtcSetBoundsFunction(scene_, geometry_id, &EmbreeSphereBoundsFunction);
-    rtcSetIntersectFunction(scene_, geometry_id,
-                            &EmbreeSphereIntersectFunction);
+    rtcSetGeometryUserData(geometry, sphere);
+    rtcSetGeometryBoundsFunction(geometry, &EmbreeSphereBoundsFunction, nullptr);
+    rtcSetGeometryIntersectFunction(geometry, &EmbreeSphereIntersectFunction);
+    rtcCommitGeometry(geometry);
+    rtcReleaseGeometry(geometry);
+
     return geometry_id;
   }
 
   const std::array<float, kNumReverbOctaveBands> kUnitEnergies{
       {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}};
+  RTCDevice device_ = nullptr;
   RTCScene scene_ = nullptr;
 };
 
 TEST_F(SphereTest, AcousticRayIntersectSphereTest) {
   const unsigned int sphere_geometry_id = AddSphereToScene();
-  rtcCommit(scene_);
+  rtcCommitScene(scene_);
 
   // Construct an AcousticRay that passes through the sphere.
   const float origin[3] = {0.5f, 0.0f, -2.0f};
@@ -250,7 +251,7 @@ TEST_F(SphereTest, AcousticRayIntersectSphereTest) {
 }
 
 TEST_F(SphereTest, AcousticRayIntersectNothingTest) {
-  rtcCommit(scene_);
+  rtcCommitScene(scene_);
 
   // Construct an AcousticRay completely outside of the sphere.
   const float origin[3] = {2.0f, 2.0f, 2.0f};

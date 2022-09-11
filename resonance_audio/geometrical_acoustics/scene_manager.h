@@ -22,8 +22,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "embree2/rtcore.h"
-#include "embree2/rtcore_ray.h"
+#include "embree3/rtcore.h"
+#include "embree3/rtcore_ray.h"
 #include "base/logging.h"
 #include "geometrical_acoustics/acoustic_listener.h"
 #include "geometrical_acoustics/mesh.h"

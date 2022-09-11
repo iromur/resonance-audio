@@ -17,13 +17,13 @@ limitations under the License.
 #ifndef RESONANCE_AUDIO_GEOMETRICAL_ACOUSTICS_SPHERE_H_
 #define RESONANCE_AUDIO_GEOMETRICAL_ACOUSTICS_SPHERE_H_
 
-#include "embree2/rtcore.h"
-#include "embree2/rtcore_ray.h"
+#include "embree3/rtcore.h"
+#include "embree3/rtcore_ray.h"
 
 namespace vraudio {
 
 // A user defined sphere geometry that enables Embree to test ray intersections.
-struct RTCORE_ALIGN(16) Sphere {
+struct RTC_ALIGN(16) Sphere {
   // Center of the sphere.
   float center[3];
 
@@ -58,12 +58,26 @@ inline void SphereBounds(const Sphere& sphere, RTCBounds* output_bounds) {
 //   pointing radially outward
 //
 // Because this function will be called internally by Embree, it works on
-// Embree's native type RTCRay as opposed to AcousticRay.
+// Embree's native type RTCRayHitN* as opposed to AcousticRay.
 //
-// @param spheres Sphere of interest.
-// @param ray RTCRay with which intersections are tested and related data set.
-void SphereIntersection(const Sphere& sphere, RTCRay* ray);
+// @param sphere Sphere of interest.
+// @param rayhit RTCRayHit pack with which intersections are tested and related data set.
+// @param N Dimension of the RTCRayHit pack. @Note that only a pack size of 1 is supported.
+void SphereIntersection(const Sphere& sphere, RTCRayHitN* rayhit, unsigned int N);
 
+
+// forward declaration
+class AcousticRay;
+  
+// Tests whether a sphere and a ray intersects and sets the related data for
+// the ray when an intersection is found.
+//
+// Overload for a single AcousticRay object, not to be called internally by Embree.
+//
+// @param sphere Sphere of interest.
+// @param ray AcousticRay with which intersections are tested and related data set.
+void SphereIntersection(const Sphere& sphere, AcousticRay* acoustic_ray);
+  
 }  // namespace vraudio
 
 #endif  // RESONANCE_AUDIO_GEOMETRICAL_ACOUSTICS_SPHERE_H_

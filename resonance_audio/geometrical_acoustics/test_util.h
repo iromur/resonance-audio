@@ -23,7 +23,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "embree2/rtcore.h"
+#include "embree3/rtcore.h"
 #include "api/resonance_audio_api.h"
 #include "base/constants_and_types.h"
 #include "geometrical_acoustics/mesh.h"
@@ -53,7 +53,7 @@ void ValidateDistribution(const int num_samples, const int num_bins,
 // Adds a ground (a rectangle consisting of two triangles) to a test scene.
 //
 // @param scene Test scene to which the ground is added.
-void AddTestGround(RTCScene scene);
+void AddTestGround(RTCDevice device, RTCScene scene);
 
 // Builds a box scene with 8 vertices, 12 triangles, and 6 walls.
 //

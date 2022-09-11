@@ -277,13 +277,13 @@ TEST_F(ProxyRoomEstimatorTest, EstimateCubeIgnoringOutliers) {
   const size_t num_points_too_close = 100;
   const float distance_too_close = 0.1f;
   for (size_t i = 0; i < num_points_too_close; ++i) {
-    paths[0].rays[0].tfar = distance_too_close;
+    paths[0].rays[0].ray.tfar = distance_too_close;
   }
   const size_t num_points_too_far = 100;
   const float distance_too_far = 10.0f;
   for (size_t i = num_points_too_close;
        i < num_points_too_far + num_points_too_close; ++i) {
-    paths[0].rays[0].tfar = distance_too_far;
+    paths[0].rays[0].ray.tfar = distance_too_far;
   }
 
   // Estimate a proxy room with a |outlier_portion| carefully chosen such that

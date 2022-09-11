@@ -20,8 +20,8 @@ limitations under the License.
 #include <array>
 #include <vector>
 
-#include "embree2/rtcore.h"
-#include "embree2/rtcore_ray.h"
+#include "embree3/rtcore.h"
+#include "embree3/rtcore_ray.h"
 #include "base/constants_and_types.h"
 
 namespace vraudio {
@@ -29,7 +29,7 @@ namespace vraudio {
 // A class extending Embree's RTCRay (https://embree.github.io/api.html) with
 // data needed for acoustic computations.
 // It exposes useful fields through accessors.
-class RTCORE_ALIGN(16) AcousticRay : public RTCRay {
+class RTC_ALIGN(16) AcousticRay : public RTCRayHit {
  public:
   enum class RayType {
     kSpecular,
@@ -49,18 +49,18 @@ class RTCORE_ALIGN(16) AcousticRay : public RTCRay {
   // points in the +x direction.
   AcousticRay()
       : energies_(), type_(RayType::kSpecular), prior_distance_(0.0f) {
-    org[0] = 0.0f;
-    org[1] = 0.0f;
-    org[2] = 0.0f;
-    dir[0] = 1.0f;
-    dir[1] = 0.0f;
-    dir[2] = 0.0f;
-    tnear = 0.0f;
-    tfar = kInfinity;
-    Ng[0] = 0.0f;
-    Ng[1] = 0.0f;
-    Ng[2] = 0.0f;
-    geomID = RTC_INVALID_GEOMETRY_ID;
+    ray.org_x = 0.0f;
+    ray.org_y = 0.0f;
+    ray.org_z = 0.0f;
+    ray.dir_x = 1.0f;
+    ray.dir_y = 0.0f;
+    ray.dir_z = 0.0f;
+    ray.tnear = 0.0f;
+    ray.tfar = kInfinity;
+    hit.Ng_x = 0.0f;
+    hit.Ng_y = 0.0f;
+    hit.Ng_z = 0.0f;
+    hit.geomID = RTC_INVALID_GEOMETRY_ID;
 
     // Members in RTCRay that we do not use (or whose initial values we do not
     // care) are not initialized:
@@ -82,18 +82,18 @@ class RTCORE_ALIGN(16) AcousticRay : public RTCRay {
               const std::array<float, kNumReverbOctaveBands>& energies,
               RayType ray_type, float prior_distance)
       : energies_(energies), type_(ray_type), prior_distance_(prior_distance) {
-    org[0] = origin[0];
-    org[1] = origin[1];
-    org[2] = origin[2];
-    dir[0] = direction[0];
-    dir[1] = direction[1];
-    dir[2] = direction[2];
-    tnear = t_near;
-    tfar = t_far;
-    Ng[0] = 0.0f;
-    Ng[1] = 0.0f;
-    Ng[2] = 0.0f;
-    geomID = RTC_INVALID_GEOMETRY_ID;
+    ray.org_x = origin[0];
+    ray.org_y = origin[1];
+    ray.org_z = origin[2];
+    ray.dir_x = direction[0];
+    ray.dir_y = direction[1];
+    ray.dir_z = direction[2];
+    ray.tnear = t_near;
+    ray.tfar = t_far;
+    hit.Ng_x = 0.0f;
+    hit.Ng_y = 0.0f;
+    hit.Ng_z = 0.0f;
+    hit.geomID = RTC_INVALID_GEOMETRY_ID;
 
     // Members in RTCRay that we do not use (or whose initial values we do not
     // care) are not initialized:
@@ -101,28 +101,28 @@ class RTCORE_ALIGN(16) AcousticRay : public RTCRay {
   }
 
   // Ray origin.
-  const float* origin() const { return org; }
+  const float* origin() const { return &ray.org_x; }
   void set_origin(const float origin[3]) {
-    org[0] = origin[0];
-    org[1] = origin[1];
-    org[2] = origin[2];
+    ray.org_x = origin[0];
+    ray.org_y = origin[1];
+    ray.org_z = origin[2];
   }
 
   // Ray direction.
-  const float* direction() const { return dir; }
+  const float* direction() const { return &ray.dir_x; }
   void set_direction(const float direction[3]) {
-    dir[0] = direction[0];
-    dir[1] = direction[1];
-    dir[2] = direction[2];
+    ray.dir_x = direction[0];
+    ray.dir_y = direction[1];
+    ray.dir_z = direction[2];
   }
 
   // Ray parameter t corresponding to the start of the ray segment.
-  const float t_near() const { return tnear; }
-  void set_t_near(float t_near) { tnear = t_near; }
+  const float t_near() const { return ray.tnear; }
+  void set_t_near(float t_near) { ray.tnear = t_near; }
 
   // Ray parameter t corresponding to the end of the ray segment.
-  const float t_far() const { return tfar; }
-  void set_t_far(float t_far) { tfar = t_far; }
+  const float t_far() const { return ray.tfar; }
+  void set_t_far(float t_far) { ray.tfar = t_far; }
 
   // Functions intersected_*() will only return meaningful results after
   // Intersect() is called, otherwise they return default values as
@@ -130,21 +130,21 @@ class RTCORE_ALIGN(16) AcousticRay : public RTCRay {
   //
   // Not normalized geometry normal at the intersection point.
   // Default value: Vec3fa(0, 0, 0).
-  const float* intersected_geometry_normal() const { return Ng; }
+  const float* intersected_geometry_normal() const { return &hit.Ng_x; }
   void set_intersected_geometry_normal(
       const float intersected_geometry_normal[3]) {
-    Ng[0] = intersected_geometry_normal[0];
-    Ng[1] = intersected_geometry_normal[1];
-    Ng[2] = intersected_geometry_normal[2];
+    hit.Ng_x = intersected_geometry_normal[0];
+    hit.Ng_y = intersected_geometry_normal[1];
+    hit.Ng_z = intersected_geometry_normal[2];
   }
 
   // Id of the intersected geometry.
   // Default value: kInvalidGeometryId.
-  const unsigned int intersected_geometry_id() const { return geomID; }
+  const unsigned int intersected_geometry_id() const { return hit.geomID; }
 
   // Id of the intersected primitive.
   // Default value: kInvalidPrimitiveId.
-  const unsigned int intersected_primitive_id() const { return primID; }
+  const unsigned int intersected_primitive_id() const { return hit.primID; }
 
   // Ray energies for all frequency bands.
   const std::array<float, kNumReverbOctaveBands>& energies() const {
@@ -174,8 +174,10 @@ class RTCORE_ALIGN(16) AcousticRay : public RTCRay {
   // @param scene An RTCScene to test the intersection.
   // @return True if an intersection is found.
   bool Intersect(RTCScene scene) {
-    rtcIntersect(scene, *this);
-    return geomID != RTC_INVALID_GEOMETRY_ID;
+    RTCIntersectContext intersectContext;
+    rtcInitIntersectContext(&intersectContext);
+    rtcIntersect1(scene, &intersectContext, this);
+    return hit.geomID != RTC_INVALID_GEOMETRY_ID;
   }
 
  private:

@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "geometrical_acoustics/sphere.h"
+#include "geometrical_acoustics/acoustic_ray.h"
 
 #include <cmath>
 #include <utility>
@@ -34,7 +35,7 @@ namespace {
 // @param ray RTCRay that potentially intersects with |sphere|, whose data
 //     fields are to be filled.
 inline void FillRaySphereIntersectionData(const Sphere& sphere, float t0,
-                                          float t1, RTCRay* ray) {
+                                          float t1, RTCRayN* ray, RTCHitN* hit) {
   // For convenience we enforce that t0 <= t1.
   if (t0 > t1) {
     std::swap(t0, t1);
@@ -42,26 +43,26 @@ inline void FillRaySphereIntersectionData(const Sphere& sphere, float t0,
 
   // In our application we only consider "intersecting" if the ray starts and
   // ends outside the sphere, i.e. only if ray.tnear < t0 and ray.tfar > t1.
-  if ((ray->tnear >= t0) || (ray->tfar <= t1)) {
+  if ((RTCRayN_tnear(ray, 1, 0) >= t0) || (RTCRayN_tfar(ray, 1, 0) <= t1)) {
     return;
   }
 
   // Set intersection-related data.
-  ray->tfar = t0;
-  ray->geomID = sphere.geometry_id;
+  RTCRayN_tfar(ray, 1, 0) = t0;
+  RTCHitN_geomID(hit, 1, 0) = sphere.geometry_id;
 
   // ray.Ng is the normal at the intersection point. For a sphere the normal is
   // always pointing radially outward, i.e. normal = p - sphere.center, where
   // p is the intersection point. Of the two intersection points, We use the
   // first.
-  ray->Ng[0] = ray->org[0] + t0 * ray->dir[0] - sphere.center[0];
-  ray->Ng[1] = ray->org[1] + t0 * ray->dir[1] - sphere.center[1];
-  ray->Ng[2] = ray->org[2] + t0 * ray->dir[2] - sphere.center[2];
+  RTCHitN_Ng_x(hit, 1, 0) = RTCRayN_org_x(ray, 1, 0) + t0 * RTCRayN_dir_x(ray, 1, 0) - sphere.center[0];
+  RTCHitN_Ng_y(hit, 1, 0) = RTCRayN_org_y(ray, 1, 0) + t0 * RTCRayN_dir_y(ray, 1, 0) - sphere.center[1];
+  RTCHitN_Ng_z(hit, 1, 0) = RTCRayN_org_z(ray, 1, 0) + t0 * RTCRayN_dir_z(ray, 1, 0) - sphere.center[2];
 }
 
 }  // namespace
 
-void SphereIntersection(const Sphere& sphere, RTCRay* ray) {
+void SphereIntersection(const Sphere& sphere, RTCRayHitN* rayhit, unsigned int N) {
   // The intersection is tested by finding if there exists a point p that is
   // both on the ray and on the sphere:
   // - Point on the ray: p = ray.origin + t * ray.direction, where t is a
@@ -82,12 +83,21 @@ void SphereIntersection(const Sphere& sphere, RTCRay* ray) {
   // b^2 - 4ac, is greater than 0 (we treat discriminant == 0, which corresponds
   // to the ray touching the sphere at a single point, as not intersecting).
 
+  // we only deal with ray packets of size 1
+  if (N != 1)
+    return;
+
+  RTCRayN* ray = RTCRayHitN_RayN(rayhit, 1);
+  RTCHitN* hit = RTCRayHitN_HitN(rayhit, 1);
+  
   // Vector pointing from the sphere's center to the ray's origin, i.e.
   // (ray.origin - sphere.center) in the above equations.
-  const Vector3f center_ray_origin_vector(ray->org[0] - sphere.center[0],
-                                          ray->org[1] - sphere.center[1],
-                                          ray->org[2] - sphere.center[2]);
-  const Vector3f ray_direction(ray->dir);
+  const Vector3f center_ray_origin_vector(RTCRayN_org_x(ray, 1, 0) - sphere.center[0],
+                                          RTCRayN_org_y(ray, 1, 0) - sphere.center[1],
+                                          RTCRayN_org_z(ray, 1, 0) - sphere.center[2]);
+  const Vector3f ray_direction(RTCRayN_dir_x(ray, 1, 0),
+			       RTCRayN_dir_y(ray, 1, 0),
+			       RTCRayN_dir_z(ray, 1, 0));
   const float a = ray_direction.squaredNorm();
   const float b = 2.0f * center_ray_origin_vector.dot(ray_direction);
   const float c =
@@ -114,7 +124,42 @@ void SphereIntersection(const Sphere& sphere, RTCRay* ray) {
   const float t0 = q / a;
   const float t1 = c / q;
 
-  FillRaySphereIntersectionData(sphere, t0, t1, ray);
+  FillRaySphereIntersectionData(sphere, t0, t1, ray, hit);
+}
+
+void SphereIntersection(const Sphere& sphere, AcousticRay* acoustic_ray)
+{
+  // construct 1-element ray pack for intersection function
+  RTCRayHitNp rayhitN;
+
+  RTCRayNp& rayN = rayhitN.ray;
+  RTCRay& ray = acoustic_ray->ray;
+  rayN.org_x = &ray.org_x;
+  rayN.org_y = &ray.org_y;
+  rayN.org_z = &ray.org_z;
+  rayN.tnear = &ray.tnear;
+  rayN.dir_x = &ray.dir_x;
+  rayN.dir_y = &ray.dir_y;
+  rayN.dir_z = &ray.dir_z;
+  rayN.time = &ray.time;
+  rayN.tfar = &ray.tfar;
+  rayN.mask = &ray.mask;
+  rayN.id = &ray.id;
+  rayN.flags = &ray.flags;
+    
+  RTCHitNp& hitN = rayhitN.hit;
+  RTCHit& hit = acoustic_ray->hit;
+  hitN.Ng_x = &hit.Ng_x;
+  hitN.Ng_y = &hit.Ng_y;
+  hitN.Ng_z = &hit.Ng_z;
+  hitN.u = &hit.u;
+  hitN.v = &hit.v;
+  hitN.primID = &hit.primID;
+  hitN.geomID = &hit.geomID;
+  for (unsigned int l = 0; l < RTC_MAX_INSTANCE_LEVEL_COUNT; l++)
+    hitN.instID[l] = &hit.instID[l];
+
+  SphereIntersection(sphere, reinterpret_cast<RTCRayHitN*>(&rayhitN), 1);
 }
 
 }  // namespace vraudio

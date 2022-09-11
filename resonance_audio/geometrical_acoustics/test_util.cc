@@ -84,8 +84,8 @@ void ValidateDistribution(const int num_samples, const int num_bins,
   ValidateUniformDistribution(cdf_bins, num_samples);
 }
 
-void AddTestGround(RTCScene scene) {
-  unsigned int mesh_id = rtcNewTriangleMesh(scene, RTC_GEOMETRY_STATIC, 2, 4);
+void AddTestGround(RTCDevice device, RTCScene scene) {
+  RTCGeometry mesh = rtcNewGeometry(device, RTC_GEOMETRY_TYPE_TRIANGLE);
 
   // Vertices. Each vertex has 4 floats: x, y, z, and a padding float whose
   // value we do not care.
@@ -102,13 +102,15 @@ void AddTestGround(RTCScene scene) {
       1, 3, 2,  // Triangle_1.
   };
   float* const embree_vertices =
-      static_cast<float*>(rtcMapBuffer(scene, mesh_id, RTC_VERTEX_BUFFER));
+    static_cast<float*>(rtcSetNewGeometryBuffer(mesh, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, 16, 4));
   std::copy(ground_vertices, ground_vertices + 16, embree_vertices);
-  rtcUnmapBuffer(scene, mesh_id, RTC_VERTEX_BUFFER);
   int* const embree_indices =
-      static_cast<int*>(rtcMapBuffer(scene, mesh_id, RTC_INDEX_BUFFER));
+    static_cast<int*>(rtcSetNewGeometryBuffer(mesh, RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, 12, 2));
   std::copy(ground_indices, ground_indices + 6, embree_indices);
-  rtcUnmapBuffer(scene, mesh_id, RTC_INDEX_BUFFER);
+
+  rtcCommitGeometry(mesh);
+  rtcAttachGeometry(scene, mesh);
+  rtcReleaseGeometry(mesh);
 }
 
 void BuildTestBoxScene(

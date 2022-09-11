@@ -29,13 +29,16 @@ class AcousticRayTest : public testing::Test {
  protected:
   void SetUp() override {
     // Use a single RTCDevice for all tests.
-    static RTCDevice device = rtcNewDevice(nullptr);
-    CHECK_NOTNULL(device);
-    scene_ = rtcDeviceNewScene(
-        device, RTC_SCENE_STATIC | RTC_SCENE_HIGH_QUALITY, RTC_INTERSECT1);
+    device_ = rtcNewDevice(nullptr);
+    CHECK_NOTNULL(device_);
+    scene_ = rtcNewScene(device_);
+    rtcSetSceneBuildQuality(scene_, RTC_BUILD_QUALITY_HIGH);
   }
 
-  void TearDown() override { rtcDeleteScene(scene_); }
+  void TearDown() override {
+    rtcReleaseScene(scene_);
+    rtcReleaseDevice(device_);
+  }
 
   // Normalizes the vector in place.
   void NormalizeVector(float* vector) {
@@ -49,6 +52,7 @@ class AcousticRayTest : public testing::Test {
 
   const std::array<float, kNumReverbOctaveBands> kZeroEnergies{
       {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}};
+  RTCDevice device_ = nullptr;
   RTCScene scene_ = nullptr;
 };
 
@@ -131,8 +135,8 @@ TEST_F(AcousticRayTest, AccessorsTest) {
 
 TEST_F(AcousticRayTest, IntersectTriangleInGroundSceneTest) {
   // Add a ground to the scene and commit.
-  AddTestGround(scene_);
-  rtcCommit(scene_);
+  AddTestGround(device_, scene_);
+  rtcCommitScene(scene_);
 
   const float t_near = 0.0f;
   const float t_far = AcousticRay::kInfinity;
@@ -193,8 +197,8 @@ TEST_F(AcousticRayTest, IntersectTriangleInGroundSceneTest) {
 
 TEST_F(AcousticRayTest, IntersectNothingBackfaceTest) {
   // Add a ground to the scene and commit.
-  AddTestGround(scene_);
-  rtcCommit(scene_);
+  AddTestGround(device_, scene_);
+  rtcCommitScene(scene_);
 
   // This ray is on the "back side" of the ground. So even if the ray passes
   // through a triangle, the intersection should not be reported.
@@ -210,7 +214,7 @@ TEST_F(AcousticRayTest, IntersectNothingBackfaceTest) {
 
 TEST_F(AcousticRayTest, IntersectNothingInEmptySceneTest) {
   // Commit without adding any geometry.
-  rtcCommit(scene_);
+  rtcCommitScene(scene_);
 
   // This ray should not intersect anything.
   const float origin[3] = {0.0f, 0.0f, 0.25f};
@@ -225,7 +229,7 @@ TEST_F(AcousticRayTest, IntersectNothingInEmptySceneTest) {
 
 TEST_F(AcousticRayTest, IntersectNothingInUnCommitedSceneTest) {
   // Add a ground to the scene but forget to commit.
-  AddTestGround(scene_);
+  AddTestGround(device_, scene_);
 
   // This ray should not intersect anything.
   const float origin[3] = {0.0f, 0.0f, 0.25f};

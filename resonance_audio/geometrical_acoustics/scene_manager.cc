@@ -27,24 +27,18 @@ namespace {
 // passed to rtcSetBoundsFunction().
 // The signature of RTCBoundsFunc does not comply with Google's C++ style,
 
-static void EmbreeSphereBoundsFunction(void* user_data, size_t index,
-                                       RTCBounds& output_bounds
-) {
-  Sphere* spheres = static_cast<Sphere*>(user_data);
-  const Sphere& sphere = spheres[index];
-  SphereBounds(sphere, &output_bounds);
+static void EmbreeSphereBoundsFunction(const struct RTCBoundsFunctionArguments* args) {
+  const Sphere& sphere = *static_cast<Sphere*>(args->geometryUserPtr);
+  SphereBounds(sphere, args->bounds_o);
 }
 
 // A function adapter from SphereIntersections() to RTCIntersectFunc in order
 // to be passed to rtcSetIntersectFunction().
 // The signature of RTCIntersectFunc does not comply with Google's C++ style,
 
-static void EmbreeSphereIntersectFunction(void* user_data,
-                                          RTCRay& ray,
-                                          size_t index) {
-  Sphere* const spheres = static_cast<Sphere*>(user_data);
-  const Sphere& sphere = spheres[index];
-  SphereIntersection(sphere, &ray);
+static void EmbreeSphereIntersectFunction(const struct RTCIntersectFunctionNArguments* args) {
+  const Sphere& sphere = *static_cast<Sphere*>(args->geometryUserPtr);
+  SphereIntersection(sphere, args->rayhit, args->N);
 }
 
 }  // namespace
@@ -53,49 +47,52 @@ SceneManager::SceneManager() {
   // Use a single RTCDevice for all scenes.
   device_ = rtcNewDevice(nullptr);
   CHECK_NOTNULL(device_);
-  scene_ = rtcDeviceNewScene(device_, RTC_SCENE_STATIC | RTC_SCENE_HIGH_QUALITY,
-                             RTC_INTERSECT1);
-  listener_scene_ = rtcDeviceNewScene(
-      device_, RTC_SCENE_STATIC | RTC_SCENE_HIGH_QUALITY, RTC_INTERSECT1);
+  scene_ = rtcNewScene(device_);
+  rtcSetSceneBuildQuality(scene_, RTC_BUILD_QUALITY_HIGH);
+  listener_scene_ = rtcNewScene(device_);
+  rtcSetSceneBuildQuality(listener_scene_, RTC_BUILD_QUALITY_HIGH);
 }
 
 SceneManager::~SceneManager() {
-  rtcDeleteScene(scene_);
-  rtcDeleteScene(listener_scene_);
-  rtcDeleteDevice(device_);
+  rtcReleaseScene(scene_);
+  rtcReleaseScene(listener_scene_);
+  rtcReleaseDevice(device_);
 }
 
 void SceneManager::BuildScene(const std::vector<Vertex>& vertex_buffer,
                               const std::vector<Triangle>& triangle_buffer) {
   num_vertices_ = vertex_buffer.size();
   num_triangles_ = triangle_buffer.size();
-  unsigned int mesh_id = rtcNewTriangleMesh(scene_, RTC_GEOMETRY_STATIC,
-                                            num_triangles_, num_vertices_);
+  RTCGeometry mesh = rtcNewGeometry(device_, RTC_GEOMETRY_TYPE_TRIANGLE);
+  
   struct EmbreeVertex {
     // Embree uses 4 floats for each vertex for alignment. The last value
     // is for padding only.
     float x, y, z, a;
   };
   EmbreeVertex* const embree_vertex_array = static_cast<EmbreeVertex*>(
-      rtcMapBuffer(scene_, mesh_id, RTC_VERTEX_BUFFER));
+    rtcSetNewGeometryBuffer(mesh, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, 16, num_vertices_));
   for (size_t i = 0; i < num_vertices_; ++i) {
     embree_vertex_array[i].x = vertex_buffer[i].x;
     embree_vertex_array[i].y = vertex_buffer[i].y;
     embree_vertex_array[i].z = vertex_buffer[i].z;
   }
-  rtcUnmapBuffer(scene_, mesh_id, RTC_VERTEX_BUFFER);
 
   // Triangles. Somehow Embree is a left-handed system, so we re-order all
   // triangle indices here, i.e. {v0, v1, v2} -> {v0, v2, v1}.
-  int* const embree_index_array =
-      static_cast<int*>(rtcMapBuffer(scene_, mesh_id, RTC_INDEX_BUFFER));
+  int* const embree_index_array = static_cast<int*>(
+    rtcSetNewGeometryBuffer(mesh, RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, 12, num_triangles_));
   for (size_t i = 0; i < num_triangles_; ++i) {
     embree_index_array[3 * i + 0] = triangle_buffer[i].v0;
     embree_index_array[3 * i + 1] = triangle_buffer[i].v2;
     embree_index_array[3 * i + 2] = triangle_buffer[i].v1;
   }
-  rtcUnmapBuffer(scene_, mesh_id, RTC_INDEX_BUFFER);
-  rtcCommit(scene_);
+
+  rtcCommitGeometry(mesh);
+  rtcAttachGeometry(scene_, mesh);
+  rtcReleaseGeometry(mesh);
+
+  rtcCommitScene(scene_);
   is_scene_committed_ = true;
 }
 
@@ -116,15 +113,16 @@ bool SceneManager::AssociateReflectionKernelToTriangles(
 void SceneManager::BuildListenerScene(
     const std::vector<AcousticListener>& listeners,
     float listener_sphere_radius) {
-  rtcDeleteScene(listener_scene_);
-  listener_scene_ = rtcDeviceNewScene(
-      device_, RTC_SCENE_STATIC | RTC_SCENE_HIGH_QUALITY, RTC_INTERSECT1);
+  rtcReleaseScene(listener_scene_);
+  listener_scene_ = rtcNewScene(device_);
+  rtcSetSceneBuildQuality(listener_scene_, RTC_BUILD_QUALITY_HIGH);
 
   for (size_t listener_index = 0; listener_index < listeners.size();
        ++listener_index) {
     // Create a sphere per listener and add to |listener_scene_|.
     const AcousticListener& listener = listeners.at(listener_index);
-    const unsigned int sphere_id = rtcNewUserGeometry(listener_scene_, 1);
+    RTCGeometry sphere_geom = rtcNewGeometry(device_, RTC_GEOMETRY_TYPE_USER);
+    const unsigned int sphere_id = rtcAttachGeometry(scene_, sphere_geom);
     Sphere* const sphere =
         AllignedMalloc<Sphere, size_t, Sphere*>(sizeof(Sphere),
                                                 /*alignment=*/64);
@@ -135,18 +133,18 @@ void SceneManager::BuildListenerScene(
     sphere->geometry_id = sphere_id;
 
     // rtcSetUserData() takes ownership of |sphere|.
-    rtcSetUserData(listener_scene_, sphere_id, sphere);
-    rtcSetBoundsFunction(listener_scene_, sphere_id,
-                         &EmbreeSphereBoundsFunction);
-    rtcSetIntersectFunction(listener_scene_, sphere_id,
-                            &EmbreeSphereIntersectFunction);
-
+    rtcSetGeometryUserData(sphere_geom, sphere);
+    rtcSetGeometryBoundsFunction(sphere_geom, &EmbreeSphereBoundsFunction, nullptr);
+    rtcSetGeometryIntersectFunction(sphere_geom, &EmbreeSphereIntersectFunction);
+    rtcCommitGeometry(sphere_geom);
+    rtcReleaseGeometry(sphere_geom);
+    
     // Associate the listener to |sphere_id| through its index in the vector
     // of listeners.
     sphere_to_listener_map_[sphere_id] = listener_index;
   }
 
-  rtcCommit(listener_scene_);
+  rtcCommitScene(listener_scene_);
   is_listener_scene_committed_ = true;
 }
 
