@@ -35,8 +35,6 @@ git_clone_if_not_exist "pffft" "https://bitbucket.org/jpommier/pffft.git" "maste
 # Install google test
 git_clone_if_not_exist "googletest" "https://github.com/google/googletest.git" "main"
 
-# Install CMake Android/iOS toolchain support (optional for Android/iOS builds)
-git_clone_if_not_exist "android-cmake" "https://github.com/taka-no-me/android-cmake.git" "master"
+# Install CMake iOS toolchain support (optional for iOS builds)
+# Note: Android CMake support is provided by the Android NDK
 git_clone_if_not_exist "ios-cmake" "https://github.com/leetal/ios-cmake" "master"
-
-

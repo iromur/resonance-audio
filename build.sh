@@ -26,9 +26,10 @@ declare -a BUILD_FLAGS
 declare -a CONFIG_FLAGS
 declare -a OSX_ARCHITECTURES
 
-ANDROID_NDK="~/android-ndk-r15c/"
-ANDROID_NATIVE_API_LEVEL="21"
-ANDROID_ABI="armeabi-v7a with NEON"
+ANDROID_NDK="~/Library/Android/sdk/ndk/25.1.8937393/"
+ANDROID_PLATFORM="android-21"
+#ANDROID_ABI="armeabi-v7a with NEON"
+ANDROID_ABI="arm64-v8a"
 
 MSVC_GENERATOR="Visual Studio 14 2015 Win64"
 
@@ -88,9 +89,8 @@ do
       ;;
 
     --android_toolchain)
-      CONFIG_FLAGS+=(-DCMAKE_TOOLCHAIN_FILE=./third_party/android-cmake/android.toolchain.cmake)
-      CONFIG_FLAGS+=(-DANDROID_NDK="${ANDROID_NDK}")
-      CONFIG_FLAGS+=(-DANDROID_NATIVE_API_LEVEL="${ANDROID_NATIVE_API_LEVEL}")
+      CONFIG_FLAGS+=(-DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK}/build/cmake/android.toolchain.cmake")
+      CONFIG_FLAGS+=(-DANDROID_PLATFORM="${ANDROID_PLATFORM}")
       CONFIG_FLAGS+=(-DANDROID_ABI="${ANDROID_ABI}")
       shift # past argument with no value
       ;;
