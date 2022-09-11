@@ -143,9 +143,9 @@ case "$(uname -s)" in
     ;;
 esac
 
-INSTALL_TARGET="install"
 if echo "${BUILD_TARGET}" | grep -q "TESTS"; then
-  INSTALL_TARGET=""
+    cmake --build . --config "${PROFILE}" -- "${BUILD_FLAGS[@]}"
+else
+    cmake --build . --config "${PROFILE}" --target install -- "${BUILD_FLAGS[@]}"
 fi
 
-cmake --build . --config "${PROFILE}" --target "${INSTALL_TARGET}" -- "${BUILD_FLAGS[@]}"
