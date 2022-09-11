@@ -43,7 +43,7 @@ add_library(ResonanceAudioMonitorVst MODULE ${RESONANCE_AUDIO_MONITOR_VST} $<TAR
 target_include_directories(ResonanceAudioMonitorVst PUBLIC ${PROJECT_SOURCE_DIR}/platforms/vst/)
 
 #Add VST SDK
-set(VSTSDK_DIR "${PROJECT_SOURCE_DIR}/third_party/VST_SDK/VST2_SDK" CACHE PATH "Path to VST SDK")
+set(VSTSDK_DIR "${PROJECT_SOURCE_DIR}/third_party/VST_SDK/vst2sdk" CACHE PATH "Path to VST SDK")
 set(VSTSDK_INCLUDE_DIR ${VSTSDK_DIR})
 set(VSTSDK_PLUGIN_SOURCE
         ${VSTSDK_DIR}/public.sdk/source/vst2.x/audioeffectx.cpp
@@ -56,7 +56,7 @@ target_sources(ResonanceAudioMonitorVst PUBLIC ${VSTSDK_PLUGIN_SOURCE})
 target_include_directories(ResonanceAudioMonitorVst PUBLIC ${VSTSDK_INCLUDE_DIR})
 
 #Add VSTGUI SDK
-set(VSTSDKGUI_DIR "${PROJECT_SOURCE_DIR}/third_party/VST_SDK/VST3_SDK/vstgui4/vstgui/" CACHE PATH "Path to VSTGUI SDK")
+set(VSTSDKGUI_DIR "${PROJECT_SOURCE_DIR}/third_party/VST_SDK/vst3sdk/vstgui4/vstgui/" CACHE PATH "Path to VSTGUI SDK")
 set(VSTGUI_DISABLE_UNITTESTS true)
 set(VSTSDKGUI_PLUGIN_SOURCE
         ${VSTSDKGUI_DIR}/plugin-bindings/aeffguieditor.cpp
@@ -119,7 +119,7 @@ elseif (APPLE)
             MACOSX_BUNDLE_SHORT_VERSION_STRING "0.0.1"
             MACOSX_BUNDLE_COPYRIGHT "Google 2017"
             )
-    set_property(TARGET ResonanceAudioMonitorVst PROPERTY CXX_STANDARD 11)
+    set_property(TARGET ResonanceAudioMonitorVst PROPERTY CXX_STANDARD 17)
 
     install(TARGETS ResonanceAudioMonitorVst
             DESTINATION "$ENV{HOME}/Library/Audio/Plug-Ins/VST"
