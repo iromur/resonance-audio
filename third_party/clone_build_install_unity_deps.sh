@@ -114,7 +114,7 @@ compile_embree_ogg_vorbis () {
 }
 
 cd "${SCRIPT_DIR}"
-git_clone_if_not_exist "embree" "https://github.com/embree/embree.git" "v2.16.5" "libembree.patch"
+git_clone_if_not_exist "embree" "https://github.com/embree/embree.git" "v3.13.4" "libembree.patch"
 git_clone_if_not_exist "ogg" "https://github.com/xiph/ogg.git" "master" "libogg.patch"
 git_clone_if_not_exist "vorbis" "https://github.com/xiph/vorbis" "master" "libvorbis.patch"
 git_clone_if_not_exist "nativeaudioplugins" "https://github.com/Unity-Technologies/NativeAudioPlugins.git" "master"
