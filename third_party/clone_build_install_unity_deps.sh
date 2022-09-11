@@ -34,6 +34,32 @@ EMBREE_CONFIG+=(-DEMBREE_MAX_ISA=SSE2)
 declare -a BUILD_FLAGS
 declare -a CONFIG_FLAGS
 
+function show_help()
+{
+  cat <<EOF
+*** Resonance Audio Unity dependencies compilation script ***
+
+  -a= | --osx_arch=[x86_64|arm64|x86_64;arm64|...], default: None (native)
+EOF
+exit
+}
+
+for i in "$@"
+do
+  case $i in
+    -a=*|--osx_arch=*)
+      OSX_ARCHITECTURES="${i#*=}"
+      shift # past argument=value
+      ;;
+
+    *)
+      # unknown option
+      echo "Unknown option: ${i}"
+      show_help
+      ;;
+  esac
+done
+
 git_clone_if_not_exist () {
   TARGET_PATH=$1
   URL=$2
@@ -95,7 +121,9 @@ git_clone_if_not_exist "nativeaudioplugins" "https://github.com/Unity-Technologi
 
 case "$(uname -s)" in
   Darwin)
-    CONFIG_FLAGS+=(-DCMAKE_OSX_ARCHITECTURES=x86_64)
+    if [ ! -z ${OSX_ARCHITECTURES} ]; then
+	CONFIG_FLAGS+=(-DCMAKE_OSX_ARCHITECTURES=${OSX_ARCHITECTURES})
+    fi
     BUILD_FLAGS+=(-j "${NUM_CORES}")
     DEFAULT_GENERATOR_FLAG=""
     compile_embree_ogg_vorbis "${DEFAULT_GENERATOR_FLAG}" "build" "install"
