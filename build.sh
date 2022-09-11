@@ -24,6 +24,7 @@ VERBOSE_MAKE=""
 
 declare -a BUILD_FLAGS
 declare -a CONFIG_FLAGS
+declare -a OSX_ARCHITECTURES
 
 ANDROID_NDK="~/android-ndk-r15c/"
 ANDROID_NATIVE_API_LEVEL="21"
@@ -49,6 +50,8 @@ Please select a build target:
 
   -p= | --profile=[Debug|Release], default: Release
 
+  -a= | --osx_arch=[x86_64|arm64|x86_64;arm64|...], default: None (native)
+
   --verbose_make             # Enables verbose make/build output.
   --android_toolchain        # Use Android NDK toolchain (may need adjustments to ANDROID_NDK,
                              # ANDROID_NATIVE_API_LEVEL, ANDROID_ABI script variables).
@@ -64,6 +67,11 @@ BUILD_TARGET=""
 for i in "$@"
 do
   case $i in
+    -a=*|--osx_arch=*)
+      OSX_ARCHITECTURES="${i#*=}"
+      shift # past argument=value
+      ;;
+
     -p=*|--profile=*)
       PROFILE="${i#*=}"
       shift # past argument=value
@@ -122,6 +130,9 @@ rm -fr build && mkdir build && cd build
 
 case "$(uname -s)" in
   Darwin)
+    if [ ! -z ${OSX_ARCHITECTURES} ]; then
+        CONFIG_FLAGS+=(-DCMAKE_OSX_ARCHITECTURES=${OSX_ARCHITECTURES})
+    fi
     BUILD_FLAGS+=(-j "${NUM_CORES}")
     cmake -DBUILD_"${BUILD_TARGET}":BOOL=ON\
       "${CONFIG_FLAGS[@]}" "$@" ..
