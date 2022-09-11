@@ -31,11 +31,12 @@ macro(configure_msvc_runtime)
     endif (NOT BUILD_WWISE_AUTHORING_PLUGIN)
 endmacro()
 
-macro(use_cxx11)
-    set(CMAKE_CXX_STANDARD 11)
+macro(use_cxx14)
+    set(CMAKE_CXX_STANDARD 14)
     set(CMAKE_CXX_STANDARD_REQUIRED on)
-endmacro(use_cxx11)
+endmacro(use_cxx14)
 
+cmake_minimum_required(VERSION 3.12)
 project(ResonanceAudio)
 
 # Build options
@@ -60,14 +61,13 @@ elseif(ANDROID)
     add_definitions(-DPLATFORM_ANDROID)
 endif ()
 
-cmake_minimum_required(VERSION 3.4.1)
 set(CMAKE_COLOR_MAKEFILE ON)
 
 set(INSTALL_DIR "${PROJECT_SOURCE_DIR}/install" CACHE PATH "Install path")
 
 set(RA_SOURCE_DIR ${PROJECT_SOURCE_DIR}/resonance_audio/)
 
-use_cxx11()
+use_cxx14()
 if (BUILD_RESONANCE_AUDIO_TESTS OR BUILD_GEOMETRICAL_ACOUSTICS_TESTS)
     enable_testing()
 
