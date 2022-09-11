@@ -97,13 +97,13 @@ do
 
     --ios_os_toolchain)
       CONFIG_FLAGS+=(-DCMAKE_TOOLCHAIN_FILE=./third_party/ios-cmake/ios.toolchain.cmake)
-      CONFIG_FLAGS+=(-DIOS_PLATFORM=OS)
+      CONFIG_FLAGS+=(-DPLATFORM=OS64)
       shift # past argument with no value
       ;;
 
     --ios_simulator_toolchain)
       CONFIG_FLAGS+=(-DCMAKE_TOOLCHAIN_FILE=./third_party/ios-cmake/ios.toolchain.cmake)
-      CONFIG_FLAGS+=(-DIOS_PLATFORM=SIMULATOR64)
+      CONFIG_FLAGS+=(-DPLATFORM=SIMULATOR64)
       shift # past argument with no value
       ;;
 

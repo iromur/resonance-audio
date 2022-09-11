@@ -53,7 +53,7 @@ if (MSVC)
     configure_msvc_runtime()
 endif ()
 
-if (IOS_PLATFORM STREQUAL "OS" OR IOS_PLATFORM MATCHES "SIMULATOR")
+if (PLATFORM MATCHES "OS" OR PLATFORM MATCHES "SIMULATOR")
     message(STATUS "iOS toolchain detected")
     set (IOS_DETECTED TRUE CACHE BOOL "IOS platform detected")
     add_definitions(-DPLATFORM_IOS)

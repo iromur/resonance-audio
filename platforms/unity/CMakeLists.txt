@@ -180,7 +180,13 @@ else ()
             )
 endif ()
 
-add_library(audiopluginresonanceaudio SHARED ${RA_UNITY_SOURCES})
+# Unity plugins on iOS link statically, all others dynamically.
+if (IOS_DETECTED)
+    add_library(audiopluginresonanceaudio STATIC ${RA_UNITY_SOURCES})
+else ()
+    add_library(audiopluginresonanceaudio SHARED ${RA_UNITY_SOURCES})
+endif ()
+
 set(PFFFT_INCLUDE_DIR ${PFFFT_DIR})
 target_include_directories(audiopluginresonanceaudio PRIVATE ${UNITY_PLUGIN_SDK_DIR})
 target_include_directories(audiopluginresonanceaudio PRIVATE ${RA_SOURCE_DIR})
