@@ -20,7 +20,7 @@ limitations under the License.
 #include "plugin-bindings/aeffguieditor.h"
 
 // Implements the VST GUI interface for |BinauralRendererVst|.
-class BinauralRendererGui : public AEffGUIEditor {
+class BinauralRendererGui : public VSTGUI::AEffGUIEditor {
  public:
   BinauralRendererGui(void* ptr);
   ~BinauralRendererGui() override {}

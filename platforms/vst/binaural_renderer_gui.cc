@@ -16,6 +16,8 @@ limitations under the License.
 
 #include "binaural_renderer_gui.h"
 
+using namespace VSTGUI;
+
 BinauralRendererGui::BinauralRendererGui(void* ptr) : AEffGUIEditor(ptr) {
   frame = 0;
 }
