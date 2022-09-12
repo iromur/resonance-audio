@@ -65,6 +65,8 @@ To clone and build the additional Unity dependencies, run:
 
     ./$YOUR_LOCAL_REPO/third_party/clone_build_install_unity_deps.sh
 
+_Note: On Apple Silicon, the build architecture is fixed to x86_64 because the embree2 library lacks arm support._
+
 #### [FMOD](https://www.fmod.com/) Platform Dependencies ([FMOD Low Level API](https://www.fmod.com/download#fmodstudio))
 
 To add the additional FMOD dependencies, download and install the [FMOD Studio
@@ -120,6 +122,12 @@ The script provides the following flags:
     -   `Debug`: Debug build
     -   `RelWithDebInfo`: Release build with debug information
     -   `Release`: Release build
+-   a=|--osx_arch=
+    -   Target architecture for building on macOS. You may specify whatever
+    	CMAKE_OSX_ARCHITECTURES can be set to, e.g., `x86_64` for Intel builds,
+	`arm64` for Silicon builds, or `x86_64;arm64` for Universal builds (untested).
+    -   _Note: Due to the lack of arm support of the embree2 library, you may want
+	to force the architecture to x86_64 on Silicon macs._
 -   --msvc_dynamic_runtime
     -   Enables dynamic linking against the run-time library on Windows (`/MD`,
         `/MDd`). By default, all Windows builds are statically linked against
@@ -131,8 +139,7 @@ The script provides the following flags:
 -   --android_toolchain
     -   Enables the Android NDK toolchain to target Android builds (may require
         adjustments to `ANDROID_NDK`, `ANDROID_NATIVE_API_LEVEL` and
-        `ANDROID_ABI` script variables). For more information, see project
-        documentation at https://github.com/taka-no-me/android-cmake.
+        `ANDROID_ABI` script variables).
 -   --ios_os_toolchain
     -   Enables the iOS OS toolchain. For more information, see project
         documentation at https://github.com/leetal/ios-cmake.
