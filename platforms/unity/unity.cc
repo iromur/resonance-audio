@@ -39,6 +39,9 @@ namespace {
 const size_t kNumOutputChannels = 2;
 
 #if !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
+// Number of recording channels
+const size_t kNumRecordChannels = kNumThirdOrderAmbisonicChannels;
+
 // Maximum number of buffers allowed to record a soundfield, which is set to ~5
 // minutes (depending on the sampling rate and the number of frames per buffer).
 const size_t kMaxNumRecordBuffers = 15000;
@@ -58,7 +61,7 @@ struct ResonanceAudioSystem {
 #if !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
     is_recording_soundfield = false;
     soundfield_recorder.reset(
-        new OggVorbisRecorder(sample_rate, kNumFirstOrderAmbisonicChannels,
+        new OggVorbisRecorder(sample_rate, kNumRecordChannels,
                               frames_per_buffer, kMaxNumRecordBuffers));
 #endif  // !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
   }
@@ -74,7 +77,7 @@ struct ResonanceAudioSystem {
   // Denotes whether the soundfield recording is currently in progress.
   bool is_recording_soundfield;
 
-  // First-order ambisonic soundfield recorder.
+  // Ambisonic soundfield recorder.
   std::unique_ptr<OggVorbisRecorder> soundfield_recorder;
 #endif  // !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
 };
@@ -122,9 +125,10 @@ void ProcessListener(size_t num_frames, float* output) {
     const auto* soundfield_buffer =
         resonance_audio_api_impl->GetAmbisonicOutputBuffer();
     std::unique_ptr<AudioBuffer> record_buffer(
-        new AudioBuffer(kNumFirstOrderAmbisonicChannels, num_frames));
+        new AudioBuffer(kNumRecordChannels, num_frames));
     if (soundfield_buffer != nullptr) {
-      for (size_t ch = 0; ch < kNumFirstOrderAmbisonicChannels; ++ch) {
+      CHECK_LE(kNumRecordChannels, soundfield_buffer->num_channels());
+      for (size_t ch = 0; ch < kNumRecordChannels; ++ch) {
         (*record_buffer)[ch] = (*soundfield_buffer)[ch];
       }
     } else {
