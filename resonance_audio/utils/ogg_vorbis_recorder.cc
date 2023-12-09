@@ -34,6 +34,8 @@ OggVorbisRecorder::OggVorbisRecorder(int sample_rate_hz, size_t num_channels,
   DCHECK_NE(num_channels_, 0U);
   DCHECK_NE(num_frames_, 0U);
   CHECK_NE(max_num_buffers_, 0U);
+
+  data_.reserve(max_num_buffers_); // pre-allocate input buffer storage
 }
 
 void OggVorbisRecorder::AddInput(std::unique_ptr<AudioBuffer> input_buffer) {
@@ -42,8 +44,8 @@ void OggVorbisRecorder::AddInput(std::unique_ptr<AudioBuffer> input_buffer) {
   DCHECK_EQ(input_buffer->num_frames(), num_frames_);
 
   if (data_.size() == max_num_buffers_) {
-    LOG(WARNING) << "Maximum input buffer limit reached, overwriting data";
-    data_.erase(data_.begin());
+    LOG(WARNING) << "Maximum input buffer limit reached, ignoring data";
+    return;
   }
   data_.push_back(std::move(input_buffer));
 }
