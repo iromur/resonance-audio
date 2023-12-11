@@ -99,12 +99,20 @@ void EXPORT_API SetListenerStereoSpeakerMode(bool enable_stereo_speaker_mode);
 void EXPORT_API SetRoomProperties(RoomProperties* room_properties,
                                   float* rt60s);
 
+// Initialize the soundfield recorder.
+// Not thread-safe: should be called from a Script instance's Start() or Awake().
+bool EXPORT_API InitSoundfieldRecorder(size_t ambisonics_order,
+                                       float max_recording_time);
+
 // Starts the soundfield recorder.
 bool EXPORT_API StartSoundfieldRecorder();
 
+// Stops the soundfield recorder.
+bool EXPORT_API StopSoundfieldRecorder();
+
 // Stops the soundfield recorder and writes the recorded data into file.
-bool EXPORT_API StopSoundfieldRecorderAndWriteToFile(const char* file_path,
-                                                     bool seamless);
+bool EXPORT_API WriteSoundfieldRecordingToFile(const char* file_path,
+                                               bool seamless);
 
 }  // extern C
 

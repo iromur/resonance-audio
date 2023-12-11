@@ -36,18 +36,22 @@ namespace unity {
 namespace {
 
 // Output channels must be stereo for the ResonanceAudio system to run properly.
-const size_t kNumOutputChannels = 2;
+constexpr size_t kNumOutputChannels = 2;
 
 #if !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
-// Number of recording channels
-const size_t kNumRecordChannels = kNumThirdOrderAmbisonicChannels;
+// Ambisonics order (index) to recording channels.
+constexpr std::array<size_t, 4> kNumRecordingChannelsByAmbisonicsOrder {
+  kNumMonoChannels,
+  kNumFirstOrderAmbisonicChannels,
+  kNumSecondOrderAmbisonicChannels,
+  kNumThirdOrderAmbisonicChannels
+};
 
-// Maximum number of buffers allowed to record a soundfield, which is set to ~5
-// minutes (depending on the sampling rate and the number of frames per buffer).
-const size_t kMaxNumRecordBuffers = 15000;
+// Recording time hard limit.
+constexpr float kMaxRecordingTime = 600.0f;
 
 // Record compression quality.
-const float kRecordQuality = 1.0f;
+constexpr float kRecordQuality = 1.0f;
 #endif  // !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
 
 // Stores the necessary components for the ResonanceAudio system. Methods called
@@ -57,14 +61,15 @@ struct ResonanceAudioSystem {
   ResonanceAudioSystem(int sample_rate, size_t num_channels,
                        size_t frames_per_buffer)
       : api(CreateResonanceAudioApi(num_channels, frames_per_buffer,
-                                    sample_rate)) {
+                                    sample_rate))
 #if !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
-    is_recording_soundfield = false;
-    soundfield_recorder.reset(
-        new OggVorbisRecorder(sample_rate, kNumRecordChannels,
-                              frames_per_buffer, kMaxNumRecordBuffers));
+      ,
+        sample_rate(sample_rate),
+	frames_per_buffer(frames_per_buffer),
+        is_recording_soundfield(false),
+        num_record_channels(0)
 #endif  // !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
-  }
+  {}
 
   // ResonanceAudio API instance to communicate with the internal system.
   std::unique_ptr<ResonanceAudioApi> api;
@@ -74,11 +79,21 @@ struct ResonanceAudioSystem {
   ReverbProperties null_reverb_properties;
 
 #if !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
+  // Constants we need later but cannot access from ResonanceAudioApi.
+  const int sample_rate;
+  const size_t frames_per_buffer;
+
   // Denotes whether the soundfield recording is currently in progress.
-  bool is_recording_soundfield;
+  std::atomic<bool> is_recording_soundfield;
+
+  // Last initialized number of recording channels.
+  size_t num_record_channels;
 
   // Ambisonic soundfield recorder.
   std::unique_ptr<OggVorbisRecorder> soundfield_recorder;
+
+  // Pre-allocated recording buffers.
+  std::vector<std::unique_ptr<AudioBuffer>> record_buffers;
 #endif  // !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
 };
 
@@ -118,22 +133,29 @@ void ProcessListener(size_t num_frames, float* output) {
   }
 
 #if !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
-  if (resonance_audio_copy->is_recording_soundfield) {
+  if (resonance_audio_copy->is_recording_soundfield.load()) {
+
+    if (resonance_audio_copy->record_buffers.empty()) {
+       LOG(WARNING) << "No recording buffers left, skipping frame";
+       return;
+    }
+
+    // Get the next record buffer.
+    auto record_buffer = std::move (resonance_audio_copy->record_buffers.back());
+    resonance_audio_copy->record_buffers.pop_back();
+
     // Record output into soundfield.
     auto* const resonance_audio_api_impl =
         static_cast<ResonanceAudioApiImpl*>(resonance_audio_copy->api.get());
     const auto* soundfield_buffer =
         resonance_audio_api_impl->GetAmbisonicOutputBuffer();
-    std::unique_ptr<AudioBuffer> record_buffer(
-        new AudioBuffer(kNumRecordChannels, num_frames));
     if (soundfield_buffer != nullptr) {
-      CHECK_LE(kNumRecordChannels, soundfield_buffer->num_channels());
-      for (size_t ch = 0; ch < kNumRecordChannels; ++ch) {
+      CHECK_EQ(num_frames, record_buffer->num_frames());
+      const auto channels = std::min (resonance_audio_copy->num_record_channels,
+                                      soundfield_buffer->num_channels());
+      for (size_t ch = 0; ch < channels; ++ch) {
         (*record_buffer)[ch] = (*soundfield_buffer)[ch];
       }
-    } else {
-      // No output received, fill the record buffer with zeros.
-      record_buffer->Clear();
     }
     resonance_audio_copy->soundfield_recorder->AddInput(
         std::move(record_buffer));
@@ -301,36 +323,105 @@ void SetRoomProperties(RoomProperties* room_properties, float* rt60s) {
 }
 
 #if !(defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS))
+bool InitSoundfieldRecorder(size_t ambisonics_order,
+                            float max_recording_time) {
+  auto resonance_audio_copy = resonance_audio;
+  if (resonance_audio_copy == nullptr) {
+    return false;
+  }
+  if (resonance_audio_copy->is_recording_soundfield.load()) {
+    LOG(ERROR) << "Cannot initialize soundfield recorder while recording is in progress";
+    return false;
+  }
+
+  // Determine number of recording channels.
+  ambisonics_order = std::min(ambisonics_order,
+                              kNumRecordingChannelsByAmbisonicsOrder.size() - 1);
+  const auto num_record_channels = kNumRecordingChannelsByAmbisonicsOrder.at(ambisonics_order);
+
+  resonance_audio_copy->num_record_channels = num_record_channels;
+  resonance_audio_copy->record_buffers.clear();
+
+  // Determine number of record buffers and allocate.
+  const auto frames_per_buffer = resonance_audio_copy->frames_per_buffer;
+  const auto sample_rate = resonance_audio_copy->sample_rate;
+  const auto num_record_buffers = size_t(std::min(max_recording_time, kMaxRecordingTime) /
+                                         (frames_per_buffer / double(sample_rate)));
+
+  if (num_record_buffers == 0) {
+    LOG(ERROR) << "Cannot initialize soundfield recorder with zero recording time";
+    return false;
+  }
+
+  for (size_t i = 0; i < num_record_buffers; ++i)
+    resonance_audio_copy->record_buffers.emplace_back(std::make_unique<AudioBuffer>(num_record_channels, frames_per_buffer));
+
+  // Create soundfield recorder object.
+  resonance_audio_copy->soundfield_recorder.reset(
+      new OggVorbisRecorder(sample_rate, num_record_channels,
+                            frames_per_buffer, num_record_buffers));
+
+  return true;
+}
+
 bool StartSoundfieldRecorder() {
   auto resonance_audio_copy = resonance_audio;
   if (resonance_audio_copy == nullptr) {
     return false;
   }
-  if (resonance_audio_copy->is_recording_soundfield) {
+
+  if (resonance_audio_copy->soundfield_recorder == nullptr) {
+    LOG(ERROR) << "Soundfield recorder object not initialized, call InitSoundfieldRecorder() first";
+    return false;
+  }
+
+  if (resonance_audio_copy->record_buffers.empty()) {
+    LOG(ERROR) << "Recording buffers not initialized or none left, call InitSoundfieldRecorder() first";
+    return false;
+  }
+
+  if (resonance_audio_copy->is_recording_soundfield.exchange(true)) {
     LOG(ERROR) << "Another soundfield recording already in progress";
     return false;
   }
 
-  resonance_audio_copy->is_recording_soundfield = true;
   return true;
 }
 
-bool StopSoundfieldRecorderAndWriteToFile(const char* file_path,
-                                          bool seamless) {
+bool StopSoundfieldRecorder() {
   auto resonance_audio_copy = resonance_audio;
   if (resonance_audio_copy == nullptr) {
     return false;
   }
-  if (!resonance_audio_copy->is_recording_soundfield) {
+
+  if (!resonance_audio_copy->is_recording_soundfield.exchange(false)) {
     LOG(ERROR) << "No recorded soundfield found";
     return false;
   }
 
-  resonance_audio_copy->is_recording_soundfield = false;
+  return true;
+}
+
+bool WriteSoundfieldRecordingToFile(const char* file_path,
+                                    bool seamless) {
+  auto resonance_audio_copy = resonance_audio;
+  if (resonance_audio_copy == nullptr) {
+    return false;
+  }
+
+  if (resonance_audio_copy->soundfield_recorder == nullptr) {
+    LOG(ERROR) << "Soundfield recorder object not initialized, call InitSoundfieldRecorder() first";
+    return false;
+  }
+
+  // Stop recording just in case.
+  resonance_audio_copy->is_recording_soundfield.store(false);
+
   if (file_path == nullptr) {
     resonance_audio_copy->soundfield_recorder->Reset();
     return false;
   }
+
   resonance_audio_copy->soundfield_recorder->WriteToFile(
       file_path, kRecordQuality, seamless);
   return true;
