@@ -27,6 +27,9 @@ public class ResonanceAudioListenerEditor : Editor {
   private SerializedProperty recorderFoldout = null;
   private SerializedProperty recorderSeamless = null;
   private SerializedProperty recorderSourceTag = null;
+  private SerializedProperty recorderAmbisonicsOrder = null;
+  private SerializedProperty recorderMaxTime = null;
+  private SerializedProperty recorderAutoStart = null;
 
   private GUIContent globalGainDbLabel = new GUIContent("Global Gain (dB)");
   private GUIContent stereoSpeakerModeEnabledLabel = new GUIContent("Enable Stereo Speaker Mode");
@@ -35,6 +38,9 @@ public class ResonanceAudioListenerEditor : Editor {
      "soundfield assets to be played back at run time.");
   private GUIContent recorderSeamlessLabel = new GUIContent("Seamless Loop");
   private GUIContent recorderSourceTagLabel = new GUIContent("Source Tag");
+  private GUIContent recorderAmbisonicsOrderLabel = new GUIContent("Ambisonics Order");
+  private GUIContent recorderMaxTimeLabel = new GUIContent("Max Recording Time");
+  private GUIContent recorderAutoStartLabel = new GUIContent("Auto-Record in Play");
 
   // Target listener instance.
   private ResonanceAudioListener listener = null;
@@ -46,6 +52,9 @@ public class ResonanceAudioListenerEditor : Editor {
     recorderFoldout = serializedObject.FindProperty("recorderFoldout");
     recorderSeamless = serializedObject.FindProperty("recorderSeamless");
     recorderSourceTag = serializedObject.FindProperty("recorderSourceTag");
+    recorderAmbisonicsOrder = serializedObject.FindProperty("recorderAmbisonicsOrder");
+    recorderMaxTime = serializedObject.FindProperty("recorderMaxTime");
+    recorderAutoStart = serializedObject.FindProperty("recorderAutoStart");
     listener = (ResonanceAudioListener) target;
   }
 
@@ -60,16 +69,13 @@ public class ResonanceAudioListenerEditor : Editor {
     EditorGUI.EndDisabledGroup();
 
     EditorGUILayout.Separator();
-
     EditorGUILayout.Slider(globalGainDb, ResonanceAudio.minGainDb, ResonanceAudio.maxGainDb,
                            globalGainDbLabel);
 
     EditorGUILayout.Separator();
-
     EditorGUILayout.PropertyField(occlusionMask);
 
     EditorGUILayout.Separator();
-
     EditorGUILayout.PropertyField(stereoSpeakerModeEnabled, stereoSpeakerModeEnabledLabel);
 
     EditorGUILayout.Separator();
@@ -80,76 +86,61 @@ public class ResonanceAudioListenerEditor : Editor {
       ++EditorGUI.indentLevel;
       EditorGUI.BeginDisabledGroup(listener.IsRecording || Application.isPlaying);
       recorderSourceTag.stringValue = EditorGUILayout.TagField(recorderSourceTagLabel,
-                                                             recorderSourceTag.stringValue);
+                                                               recorderSourceTag.stringValue);
 
       EditorGUILayout.Separator();
+      recorderAmbisonicsOrder.intValue = EditorGUILayout.IntSlider(recorderAmbisonicsOrderLabel,
+                                                                   recorderAmbisonicsOrder.intValue,
+                                                                   0, 3);
 
+      EditorGUILayout.Separator();
+      recorderMaxTime.floatValue = EditorGUILayout.Slider(recorderMaxTimeLabel,
+                                                          recorderMaxTime.floatValue,
+                                                          0.0f, 600.0f);
+
+      EditorGUILayout.Separator();
       EditorGUILayout.PropertyField(recorderSeamless, recorderSeamlessLabel);
+
+      EditorGUILayout.Separator();
+      EditorGUILayout.PropertyField(recorderAutoStart, recorderAutoStartLabel);
       EditorGUI.EndDisabledGroup();
 
       EditorGUILayout.Separator();
 
-      // Recording is allowed in Edit Mode only.
-      EditorGUI.BeginDisabledGroup(Application.isPlaying);
+      EditorGUI.BeginDisabledGroup(recorderMaxTime.floatValue < 1.0f);
       EditorGUILayout.BeginHorizontal();
       GUILayout.Space(15 * EditorGUI.indentLevel);
-      EditorGUILayout.BeginVertical();
       if (listener.IsRecording) {
-        if (GUILayout.Button("Stop")) {
-          StopRecording();
-        }
+        EditorGUILayout.BeginVertical();
+        if (GUILayout.Button("Stop"))
+          listener.StopSoundfieldRecorder();
         --EditorGUI.indentLevel;
-        EditorGUILayout.HelpBox("Recording in progress: " +
-                                listener.GetCurrentRecordDuration().ToString("F1") + " seconds.",
-                                MessageType.Info);
+        float duration = (float)listener.GetCurrentRecordDuration();
+        bool exceeded = duration > recorderMaxTime.floatValue;
+        EditorGUILayout.HelpBox(exceeded ? "Max Recording Time reached."
+                                         : "Recording in progress: " +
+                                           duration.ToString("F1") + " seconds.",
+                                exceeded ? MessageType.Warning : MessageType.Info);
         ++EditorGUI.indentLevel;
+        EditorGUILayout.EndVertical();
         Repaint();
-      } else if (GUILayout.Button("Record")) {
-        listener.StartSoundfieldRecorder();
+      } else {
+        EditorGUILayout.BeginVertical();
+        if (GUILayout.Button("Record"))
+          listener.StartSoundfieldRecorder();
+        if (listener.HasRecordedData) {
+          --EditorGUI.indentLevel;
+          EditorGUILayout.HelpBox("The recording will be saved when leaving Play Mode.",
+                                  MessageType.Info);
+          ++EditorGUI.indentLevel;
+        }
+        EditorGUILayout.EndVertical();
       }
-      EditorGUILayout.EndVertical();
       EditorGUILayout.EndHorizontal();
       EditorGUI.EndDisabledGroup();
-      if (Application.isPlaying) {
-        EditorGUILayout.HelpBox("Soundfield recording is only allowed in Edit Mode.",
-                                MessageType.Warning);
-      }
-      --EditorGUI.indentLevel;
     }
 
     serializedObject.ApplyModifiedProperties();
   }
   /// @endcond
-
-  // Stops soundfield recording.
-  private void StopRecording() {
-    // Save recorded soundfield clips into a temporary folder.
-    string tempFolderPath = FileUtil.GetUniqueTempPathInProject();
-    if (!Directory.Exists(tempFolderPath)) {
-      Directory.CreateDirectory(tempFolderPath);
-    }
-    string tempFileName = Path.ChangeExtension(listener.name, "ogg");
-    string tempFilePath = Path.Combine(tempFolderPath, tempFileName);
-    listener.StopSoundfieldRecorder(tempFilePath);
-
-    // Copy the recorded file as an ambisonic audio clip into project assets.
-    string relativeClipPath = EditorUtility.SaveFilePanelInProject("Save Soundfield", listener.name,
-                                                                   "ogg", null);
-    if (relativeClipPath.Length > 0 && File.Exists(tempFilePath)) {
-      string projectFolderPath =
-          Application.dataPath.Substring(0, Application.dataPath.IndexOf("Assets"));
-      string targetFilePath = Path.Combine(projectFolderPath, relativeClipPath);
-      FileUtil.ReplaceFile(tempFilePath, targetFilePath);
-      AssetDatabase.Refresh();
-
-      AudioImporter importer = (AudioImporter) AssetImporter.GetAtPath(relativeClipPath);
-      importer.ambisonic = true;
-      AssetDatabase.Refresh();
-    }
-
-    // Cleanup temporary files.
-    if (Directory.Exists(tempFolderPath)) {
-      Directory.Delete(tempFolderPath, true);
-    }
-  }
 }

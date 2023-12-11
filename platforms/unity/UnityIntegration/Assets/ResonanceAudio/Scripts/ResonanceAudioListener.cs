@@ -15,6 +15,8 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using UnityEditor;
+using System.IO;
 
 /// Resonance Audio listener component that enhances AudioListener to provide advanced spatial audio
 /// features.
@@ -48,8 +50,27 @@ public class ResonanceAudioListener : MonoBehaviour {
            "\"Untagged\" to include all enabled spatialized audio sources in the scene.")]
   public string recorderSourceTag = "Untagged";
 
+  /// Ambisonics order for soundfield recording, determines number of recording channels.
+  [Tooltip("Specify the Ambisonics order for soundfield recording (0-3). " +
+           "This will set the number of recorded channels.")]
+  public int recorderAmbisonicsOrder = 1;
+
+  /// Maximum recording time.
+  [Tooltip("Set the maximum recording time. Recording will take place to pre-allocated " +
+           "memory and will be written to disk after. " +
+           "Set to 0 if you do not intend to record in order prevent allocation.")]
+  public float recorderMaxTime = 0.0f;
+
+  /// Flag to automatically start recording when entering Play Mode.
+  [Tooltip("Sets whether recording should start automatically when " +
+           "entering Play Mode.")]
+  public bool recorderAutoStart = false;
+
   /// Is currently recording soundfield?
   public bool IsRecording { get; private set; }
+
+  /// Has recorded yet unsaved soundfield data?
+  public bool HasRecordedData { get; private set; }
 
 #pragma warning disable 0414  // private variable assigned but is never used.
   // Denotes whether the soundfield recorder foldout should be expanded.
@@ -64,18 +85,36 @@ public class ResonanceAudioListener : MonoBehaviour {
   private double recorderStartTime = 0.0;
 
   void OnEnable() {
-    if (Application.isEditor && !Application.isPlaying) {
+    if (Application.isEditor) {
       IsRecording = false;
+      HasRecordedData = false;
       recorderStartTime = 0.0;
-      recorderTaggedSources = new List<AudioSource>();
+
+      if (!Application.isPlaying)
+        recorderTaggedSources = new List<AudioSource>();
     }
   }
 
   void OnDisable() {
     if (Application.isEditor && IsRecording) {
-      // Force stop soundfield recorder.
-      StopSoundfieldRecorder(null);
+      // Stop soundfield recorder.
+      StopSoundfieldRecorder();
       Debug.LogWarning("Soundfield recording is stopped.");
+    }
+
+    // Trigger saving to file when returning from Play Mode.
+    if (Application.isPlaying && HasRecordedData) {
+      WriteSoundfieldRecordingToFile();
+    }
+  }
+
+  void Start() {
+    // Init soundfield recorder when Play Mode starts.
+    if (Application.isEditor && Application.isPlaying && recorderMaxTime > 1.0f) {
+      InitSoundFieldRecorder();
+
+      if (recorderAutoStart)
+        StartSoundfieldRecorder();
     }
   }
 
@@ -100,8 +139,8 @@ public class ResonanceAudioListener : MonoBehaviour {
 
   /// Starts soundfield recording.
   public void StartSoundfieldRecorder() {
-    if (!(Application.isEditor && !Application.isPlaying)) {
-      Debug.LogError("Soundfield recording is only supported in Unity Editor \"Edit Mode\".");
+    if (!Application.isEditor) {
+      Debug.LogError("Soundfield recording is only supported in Unity Editor.");
       return;
     }
 
@@ -110,42 +149,117 @@ public class ResonanceAudioListener : MonoBehaviour {
       return;
     }
 
-    recorderStartTime = AudioSettings.dspTime;
-    for (int i = 0; i < recorderTaggedSources.Count; ++i) {
-      if (recorderTaggedSources[i].playOnAwake) {
-        recorderTaggedSources[i].PlayScheduled(recorderStartTime);
+    // Assume recorder has been initalised by Start() in play mode.
+    if (!Application.isPlaying && !InitSoundFieldRecorder())
+        return;
+
+    // correct by potentially previous recording time without saving
+    recorderStartTime = AudioSettings.dspTime -
+                          (HasRecordedData ? recorderStartTime : 0.0);
+
+    // Sources need to be played explicitly only in edit mode.
+    if (!Application.isPlaying) {
+      for (int i = 0; i < recorderTaggedSources.Count; ++i) {
+        if (recorderTaggedSources[i].playOnAwake) {
+          recorderTaggedSources[i].PlayScheduled(recorderStartTime);
+        }
       }
     }
+
     IsRecording = ResonanceAudio.StartRecording();
     if (!IsRecording) {
       Debug.LogError("Failed to start soundfield recording.");
       IsRecording = false;
-      for (int i = 0; i < recorderTaggedSources.Count; ++i) {
-        recorderTaggedSources[i].Stop();
-      }
+
+      if (!Application.isPlaying)
+        StopTaggedSources();
     }
   }
 
-  /// Stops soundfield recording and saves the recorded data into target file path.
-  public void StopSoundfieldRecorder(string filePath) {
-    if (!(Application.isEditor && !Application.isPlaying)) {
-      Debug.LogError("Soundfield recording is only supported in Unity Editor \"Edit Mode\".");
+  /// Stops soundfield recording
+  public void StopSoundfieldRecorder()
+  {
+    if (!Application.isEditor) {
+      Debug.LogError("Soundfield recording is only supported in Unity Editor.");
       return;
     }
 
     if (!IsRecording) {
+      Debug.LogWarning("No recording taking place.");
+      return;
+    }
+
+    recorderStartTime = GetCurrentRecordDuration(); // store recorded time
+    IsRecording = false;
+
+    if (!ResonanceAudio.StopRecording())
+      Debug.LogError("Failed to stop soundfield recording.");
+
+    HasRecordedData = true;
+
+    if (!Application.isPlaying) {
+      StopTaggedSources();
+      WriteSoundfieldRecordingToFile();
+    }
+  }
+
+  /// Stops soundfield recording and saves the recorded data into target file path.
+  private void WriteSoundfieldRecordingToFile() {
+    if (!Application.isEditor) {
+      Debug.LogError("Soundfield recording is only supported in Unity Editor.");
+      return;
+    }
+
+    if (!HasRecordedData) {
       Debug.LogWarning("No recorded soundfield was found.");
       return;
     }
 
-    IsRecording = false;
+    // Save recorded soundfield clips into a temporary folder.
+    string tempFolderPath = FileUtil.GetUniqueTempPathInProject();
+    if (!Directory.Exists(tempFolderPath))
+    {
+      Directory.CreateDirectory(tempFolderPath);
+    }
+    string tempFileName = name + string.Format("_{0:yyyy-MM-dd_hh-mm-ss-tt}.ogg", System.DateTime.Now);
+    string tempFilePath = Path.Combine(tempFolderPath, tempFileName);
+    if (!ResonanceAudio.WriteRecording(tempFilePath, recorderSeamless)) {
+      Debug.LogError("Writing recording to temporary location failed: " + tempFilePath);
+      return;
+    }
+
+    // Copy the recorded file as an ambisonic audio clip into project assets.
+    string relativeClipPath = EditorUtility.SaveFilePanelInProject("Save Soundfield Recording", tempFileName,
+                                                                   "ogg", null);
+    if (relativeClipPath.Length > 0 && File.Exists(tempFilePath)) {
+      string projectFolderPath =
+          Application.dataPath.Substring(0, Application.dataPath.IndexOf("Assets"));
+      string targetFilePath = Path.Combine(projectFolderPath, relativeClipPath);
+      FileUtil.ReplaceFile(tempFilePath, targetFilePath);
+      AssetDatabase.Refresh();
+
+      AudioImporter importer = (AudioImporter)AssetImporter.GetAtPath(relativeClipPath);
+      importer.ambisonic = true;
+      AssetDatabase.Refresh();
+    }
+
+    // Cleanup temporary files.
+    if (Directory.Exists(tempFolderPath)) {
+      Directory.Delete(tempFolderPath, true);
+    }
+
+    HasRecordedData = false;
     recorderStartTime = 0.0;
-    if (!ResonanceAudio.StopRecordingAndSaveToFile(filePath, recorderSeamless)) {
-      Debug.LogError("Failed to save soundfield recording into file.");
-    }
-    for (int i = 0; i < recorderTaggedSources.Count; ++i) {
-      recorderTaggedSources[i].Stop();
-    }
+  }
+
+  // Initialize the sound field recorder with current parameters.
+  private bool InitSoundFieldRecorder() {
+    bool result = ResonanceAudio.InitRecording(recorderAmbisonicsOrder, recorderMaxTime);
+
+    if (!result)
+      Debug.LogError("Failed to initialize soundfield recorder.");
+
+    return result;
   }
 
   // Updates the list of the target spatial audio sources to be recorded.
@@ -158,6 +272,13 @@ public class ResonanceAudioListener : MonoBehaviour {
           sources[i].enabled && sources[i].spatialize) {
         recorderTaggedSources.Add(sources[i]);
       }
+    }
+  }
+
+  // Stops all sources in the list of tagged record sources.
+  private void StopTaggedSources() {
+    for (int i = 0; i < recorderTaggedSources.Count; ++i) {
+      recorderTaggedSources[i].Stop();
     }
   }
 }

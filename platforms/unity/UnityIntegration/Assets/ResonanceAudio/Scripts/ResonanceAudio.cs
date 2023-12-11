@@ -106,8 +106,17 @@ public static class ResonanceAudio {
     Marshal.DestroyStructure(roomPropertiesPtr, typeof(RoomProperties));
   }
 
-  /// Starts soundfield recording.
+  /// Initalizes soundfield recording.
   /// @note This should only be called from the main Unity thread.
+  public static bool InitRecording(int ambisonicsOrder, float maxRecordingTime) {
+#if UNITY_EDITOR
+    return InitSoundfieldRecorder(ambisonicsOrder, maxRecordingTime);
+#else
+    return false;
+#endif  // UNITY_EDITOR
+  }
+
+  /// Starts soundfield recording.
   public static bool StartRecording() {
 #if UNITY_EDITOR
     return StartSoundfieldRecorder();
@@ -116,11 +125,21 @@ public static class ResonanceAudio {
 #endif  // UNITY_EDITOR
   }
 
+  /// Stops soundfield recording.
+  public static bool StopRecording()
+  {
+#if UNITY_EDITOR
+    return StopSoundfieldRecorder();
+#else
+    return false;
+#endif  // UNITY_EDITOR
+  }
+
   /// Stops soundfield recording and saves it into target file path.
   /// @note This should only be called from the main Unity thread.
-  public static bool StopRecordingAndSaveToFile(string filePath, bool seamless) {
+  public static bool WriteRecording(string filePath, bool seamless) {
 #if UNITY_EDITOR
-    return StopSoundfieldRecorderAndWriteToFile(filePath, seamless);
+    return WriteSoundfieldRecordingToFile(filePath, seamless);
 #else
     return false;
 #endif  // UNITY_EDITOR
@@ -435,10 +454,16 @@ public static class ResonanceAudio {
 #if UNITY_EDITOR
   // Soundfield recorder handlers.
   [DllImport(pluginName)]
+  private static extern bool InitSoundfieldRecorder(int ambisonicsOrder, float maxRecordingTime);
+
+  [DllImport(pluginName)]
   private static extern bool StartSoundfieldRecorder();
 
   [DllImport(pluginName)]
-  private static extern bool StopSoundfieldRecorderAndWriteToFile(string filePath, bool seamless);
+  private static extern bool StopSoundfieldRecorder();
+
+  [DllImport(pluginName)]
+  private static extern bool WriteSoundfieldRecordingToFile(string filePath, bool seamless);
 
   // Reverb computer handlers.
   [DllImport(pluginName)]
